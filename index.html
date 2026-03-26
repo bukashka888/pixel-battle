@@ -170,7 +170,7 @@
     let currentColor = COLORS[1];
     let lastPixelTime = 0;
     let onCooldown = false;
-    let zoom = 0.8;
+    let zoom = 0.7;
     let dragging = false;
     let dragStart = { x: 0, y: 0 };
     let scrollStart = { left: 0, top: 0 };
@@ -262,7 +262,7 @@
         return false;
     }
     
-    // ========== ОНЛАЙН (реальный, без дублей) ==========
+    // ========== ОНЛАЙН ==========
     function updateOnline() {
         let now = Date.now();
         let users = JSON.parse(localStorage.getItem('pixelUsers') || '{}');
@@ -287,7 +287,7 @@
         localStorage.setItem('pixelUsers', JSON.stringify(users));
     });
     
-    // ========== СИНХРОНИЗАЦИЯ МЕЖДУ ВКЛАДКАМИ ==========
+    // ========== СИНХРОНИЗАЦИЯ ==========
     window.addEventListener('storage', (e) => {
         if (e.key === 'pixelBattle') {
             let newPixels = JSON.parse(e.newValue);
@@ -335,7 +335,6 @@
         for (let ch of text.toUpperCase()) {
             if (x > SIZE - 10) { x = 5; y += 8; }
             if (y > SIZE - 10) break;
-            // простая пиксельная буква
             for (let py = 0; py < 5; py++) {
                 for (let px = 0; px < 5; px++) {
                     if (y+py < SIZE && x+px < SIZE && (px===2 || py===2)) {
@@ -394,7 +393,6 @@
     }
     function onEnd() { painting = false; }
     
-    // Перемещение правой кнопкой
     function onRightStart(e) {
         if (e.button === 2) {
             e.preventDefault();
@@ -419,7 +417,6 @@
         wrapper.classList.remove('dragging');
     }
     
-    // Зум
     function onWheel(e) {
         e.preventDefault();
         let delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -430,7 +427,6 @@
         }
     }
     
-    // Палитра
     function buildPalette() {
         paletteDiv.innerHTML = '';
         COLORS.forEach(c => {
@@ -464,7 +460,6 @@
     canvas.addEventListener('wheel', onWheel, {passive: false});
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     
-    // Админ кнопки
     if (isAdmin) {
         document.getElementById('clearBtn').onclick = clearCanvas;
         document.getElementById('fillAllBtn').onclick = () => fillAll(document.getElementById('adminColor').value);
@@ -474,7 +469,6 @@
     buildPalette();
     loadCanvas();
     
-    // Центрируем
     setTimeout(() => {
         wrapper.scrollLeft = (wrapper.scrollWidth - wrapper.clientWidth) / 2;
         wrapper.scrollTop = (wrapper.scrollHeight - wrapper.clientHeight) / 2;
