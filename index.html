@@ -2,11 +2,12 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pixel Battle</title>
     <style>
         * {
             user-select: none;
+            touch-action: none;
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -18,21 +19,27 @@
             align-items: center;
             min-height: 100vh;
             font-family: system-ui;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
         }
         .canvas-wrapper {
             background: #0a0c12;
             border-radius: 1rem;
             padding: 6px;
             overflow: auto;
-            max-height: 85vh;
+            max-height: 90vh;
             max-width: 95vw;
             cursor: grab;
+            touch-action: none;
         }
         .canvas-wrapper.dragging { cursor: grabbing; }
         canvas {
             display: block;
             cursor: crosshair;
             background: #1e1e2a;
+            touch-action: none;
         }
         .top-bar {
             position: fixed;
@@ -45,6 +52,7 @@
             font-size: 14px;
             font-weight: bold;
             z-index: 100;
+            backdrop-filter: blur(5px);
         }
         .color-palette {
             position: fixed;
@@ -52,19 +60,24 @@
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 10px;
-            padding: 10px 18px;
+            gap: 8px;
+            padding: 10px 15px;
             background: rgba(0,0,0,0.85);
             border-radius: 50px;
             z-index: 100;
+            backdrop-filter: blur(10px);
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 95vw;
         }
         .color-btn {
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             border: 2px solid transparent;
             cursor: pointer;
             transition: 0.1s;
+            flex-shrink: 0;
         }
         .color-btn.active {
             transform: scale(1.15);
@@ -86,6 +99,9 @@
             gap: 8px;
             flex-direction: column;
             min-width: 180px;
+            backdrop-filter: blur(10px);
+            max-height: 80vh;
+            overflow-y: auto;
         }
         .admin-panel.show { display: flex; }
         .admin-panel button {
@@ -99,6 +115,13 @@
         }
         .admin-panel button:hover { background: #e67e22; }
         .admin-panel input {
+            background: #2c3e50;
+            border: none;
+            padding: 6px;
+            border-radius: 20px;
+            color: white;
+        }
+        .admin-panel select {
             background: #2c3e50;
             border: none;
             padding: 6px;
@@ -121,6 +144,10 @@
         .admin-badge.show { display: block; }
         @media (max-width: 700px) {
             .color-btn { width: 36px; height: 36px; }
+            .color-palette { gap: 6px; padding: 8px 12px; }
+        }
+        @media (max-width: 500px) {
+            .color-btn { width: 32px; height: 32px; }
         }
     </style>
 </head>
@@ -153,7 +180,27 @@
     const COOLDOWN = 5000;
     const DEFAULT = "#1e1e2a";
     
-    const COLORS = ["#2c2e3a","#e63946","#f4a261","#2a9d8f","#457b9d","#e9c46a","#9c89b8","#f25e5e","#70d6ff","#b7ef9c","#ffffff"];
+    // 18 ЦВЕТОВ
+    const COLORS = [
+        "#1e1e2a", // темный фон
+        "#e63946", // красный
+        "#f4a261", // оранжевый
+        "#2a9d8f", // бирюзовый
+        "#457b9d", // синий
+        "#e9c46a", // золотой
+        "#9c89b8", // фиолетовый
+        "#f25e5e", // коралловый
+        "#70d6ff", // голубой
+        "#b7ef9c", // салатовый
+        "#ffb3ba", // розовый
+        "#ffffff", // белый
+        "#ff6b6b", // ярко-красный
+        "#4ecdc4", // мятный
+        "#ffe66d", // лимонный
+        "#ff9f1c", // мандариновый
+        "#c77dff", // лавандовый
+        "#ff8c42"  // тыквенный
+    ];
     
     // DOM
     const canvas = document.getElementById('pixelCanvas');
@@ -174,6 +221,12 @@
     let dragging = false;
     let dragStart = { x: 0, y: 0 };
     let scrollStart = { left: 0, top: 0 };
+    
+    // Мультитач для зума
+    let initialDistance = 0;
+    let initialZoom = 1;
+    let touchStart = { x: 0, y: 0 };
+    let isPinching = false;
     
     // Админ
     let isAdmin = window.location.href.includes('admin=123456');
@@ -348,21 +401,13 @@
         saveCanvas();
     }
     
-    // ========== УПРАВЛЕНИЕ ==========
-    function getCoord(e) {
+    // ========== УПРАВЛЕНИЕ (мышь + тач) ==========
+    function getCoordFromTouch(touch) {
         let rect = canvas.getBoundingClientRect();
         let scaleX = canvas.width / rect.width;
         let scaleY = canvas.height / rect.height;
-        let clientX, clientY;
-        if (e.touches) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = e.clientX;
-            clientY = e.clientY;
-        }
-        let canvasX = (clientX - rect.left) * scaleX;
-        let canvasY = (clientY - rect.top) * scaleY;
+        let canvasX = (touch.clientX - rect.left) * scaleX;
+        let canvasY = (touch.clientY - rect.top) * scaleY;
         if (canvasX < 0 || canvasY < 0) return null;
         let x = Math.floor(canvasX / CELL);
         let y = Math.floor(canvasY / CELL);
@@ -370,63 +415,190 @@
         return null;
     }
     
-    function onClick(e) {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        let coord = getCoord(e);
-        if (coord) placePixel(coord.x, coord.y, currentColor);
+    function getCoordFromMouse(e) {
+        let rect = canvas.getBoundingClientRect();
+        let scaleX = canvas.width / rect.width;
+        let scaleY = canvas.height / rect.height;
+        let canvasX = (e.clientX - rect.left) * scaleX;
+        let canvasY = (e.clientY - rect.top) * scaleY;
+        if (canvasX < 0 || canvasY < 0) return null;
+        let x = Math.floor(canvasX / CELL);
+        let y = Math.floor(canvasY / CELL);
+        if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) return {x, y};
+        return null;
     }
     
-    let painting = false;
-    function onStart(e) {
-        if (e.button === 0 || e.type === 'touchstart') {
-            e.preventDefault();
-            painting = true;
-            onClick(e);
+    // Рисование
+    function handleDraw(x, y) {
+        if (x !== null && y !== null) {
+            placePixel(x, y, currentColor);
         }
     }
-    function onMove(e) {
+    
+    // Мышь
+    let painting = false;
+    function onMouseDown(e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        painting = true;
+        let coord = getCoordFromMouse(e);
+        if (coord) handleDraw(coord.x, coord.y);
+    }
+    function onMouseMove(e) {
         if (!painting) return;
         e.preventDefault();
-        let coord = getCoord(e);
-        if (coord) placePixel(coord.x, coord.y, currentColor);
+        let coord = getCoordFromMouse(e);
+        if (coord) handleDraw(coord.x, coord.y);
     }
-    function onEnd() { painting = false; }
+    function onMouseUp() { painting = false; }
     
-    function onRightStart(e) {
-        if (e.button === 2) {
+    // Тач для рисования (одним пальцем)
+    let touchDrawing = false;
+    function onTouchStart(e) {
+        if (e.touches.length === 1 && !isPinching) {
             e.preventDefault();
-            dragging = true;
-            dragStart.x = e.clientX;
-            dragStart.y = e.clientY;
-            scrollStart.left = wrapper.scrollLeft;
-            scrollStart.top = wrapper.scrollTop;
+            touchDrawing = true;
+            let coord = getCoordFromTouch(e.touches[0]);
+            if (coord) handleDraw(coord.x, coord.y);
+        }
+    }
+    function onTouchMove(e) {
+        if (touchDrawing && e.touches.length === 1 && !isPinching) {
+            e.preventDefault();
+            let coord = getCoordFromTouch(e.touches[0]);
+            if (coord) handleDraw(coord.x, coord.y);
+        }
+    }
+    function onTouchEnd() { 
+        touchDrawing = false;
+        isPinching = false;
+        initialDistance = 0;
+    }
+    
+    // Перемещение холста (мышь правой кнопкой / тач одним пальцем для перемещения)
+    let panning = false;
+    let panStart = { x: 0, y: 0 };
+    let panScrollStart = { left: 0, top: 0 };
+    
+    function onPanStart(e) {
+        if (e.button === 2) { // правая мышь
+            e.preventDefault();
+            panning = true;
+            panStart.x = e.clientX;
+            panStart.y = e.clientY;
+            panScrollStart.left = wrapper.scrollLeft;
+            panScrollStart.top = wrapper.scrollTop;
             wrapper.classList.add('dragging');
         }
     }
-    function onRightMove(e) {
-        if (!dragging) return;
+    
+    function onPanMove(e) {
+        if (!panning) return;
         e.preventDefault();
-        let dx = e.clientX - dragStart.x;
-        let dy = e.clientY - dragStart.y;
-        wrapper.scrollLeft = scrollStart.left - dx;
-        wrapper.scrollTop = scrollStart.top - dy;
+        let dx = e.clientX - panStart.x;
+        let dy = e.clientY - panStart.y;
+        wrapper.scrollLeft = panScrollStart.left - dx;
+        wrapper.scrollTop = panScrollStart.top - dy;
     }
-    function onRightEnd() {
-        dragging = false;
+    
+    function onPanEnd() {
+        panning = false;
         wrapper.classList.remove('dragging');
     }
     
+    // Тач для перемещения (одним пальцем если не рисуем? но у нас рисование одним пальцем,
+    // поэтому перемещение будет двумя пальцами, а рисование одним)
+    // Двумя пальцами - зум и перемещение
+    
+    function getDistance(touches) {
+        let dx = touches[0].clientX - touches[1].clientX;
+        let dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+    }
+    
+    function getMidPoint(touches) {
+        return {
+            x: (touches[0].clientX + touches[1].clientX) / 2,
+            y: (touches[0].clientY + touches[1].clientY) / 2
+        };
+    }
+    
+    function onTouchPinchStart(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            isPinching = true;
+            touchDrawing = false;
+            initialDistance = getDistance(e.touches);
+            initialZoom = zoom;
+            
+            let rect = canvas.getBoundingClientRect();
+            let mid = getMidPoint(e.touches);
+            let relativeX = (mid.x - rect.left) / rect.width;
+            let relativeY = (mid.y - rect.top) / rect.height;
+            
+            window.pinchCenter = { x: relativeX, y: relativeY, clientX: mid.x, clientY: mid.y };
+        }
+    }
+    
+    function onTouchPinchMove(e) {
+        if (isPinching && e.touches.length === 2) {
+            e.preventDefault();
+            let newDistance = getDistance(e.touches);
+            let scale = newDistance / initialDistance;
+            let newZoom = Math.min(2.5, Math.max(0.3, initialZoom * scale));
+            
+            if (newZoom !== zoom && window.pinchCenter) {
+                let oldZoom = zoom;
+                zoom = newZoom;
+                canvas.style.transform = `scale(${zoom})`;
+                
+                // Корректируем скролл чтобы зум шел в центр пальцев
+                let rect = canvas.getBoundingClientRect();
+                let beforeZoomScrollLeft = wrapper.scrollLeft;
+                let beforeZoomScrollTop = wrapper.scrollTop;
+                
+                let centerX = window.pinchCenter.clientX;
+                let centerY = window.pinchCenter.clientY;
+                
+                let wrapperRect = wrapper.getBoundingClientRect();
+                let pointX = centerX - wrapperRect.left;
+                let pointY = centerY - wrapperRect.top;
+                
+                let afterZoomScrollLeft = (pointX + beforeZoomScrollLeft) * (zoom / oldZoom) - pointX;
+                let afterZoomScrollTop = (pointY + beforeZoomScrollTop) * (zoom / oldZoom) - pointY;
+                
+                wrapper.scrollLeft = Math.max(0, Math.min(afterZoomScrollLeft, wrapper.scrollWidth - wrapper.clientWidth));
+                wrapper.scrollTop = Math.max(0, Math.min(afterZoomScrollTop, wrapper.scrollHeight - wrapper.clientHeight));
+            }
+        }
+    }
+    
+    // Колесико мыши
     function onWheel(e) {
         e.preventDefault();
         let delta = e.deltaY > 0 ? -0.1 : 0.1;
         let newZoom = zoom + delta;
         if (newZoom >= 0.3 && newZoom <= 2.5) {
+            let oldZoom = zoom;
             zoom = newZoom;
             canvas.style.transform = `scale(${zoom})`;
+            
+            let rect = canvas.getBoundingClientRect();
+            let mouseX = e.clientX;
+            let mouseY = e.clientY;
+            let wrapperRect = wrapper.getBoundingClientRect();
+            let pointX = mouseX - wrapperRect.left;
+            let pointY = mouseY - wrapperRect.top;
+            
+            let afterZoomScrollLeft = (pointX + wrapper.scrollLeft) * (zoom / oldZoom) - pointX;
+            let afterZoomScrollTop = (pointY + wrapper.scrollTop) * (zoom / oldZoom) - pointY;
+            
+            wrapper.scrollLeft = Math.max(0, Math.min(afterZoomScrollLeft, wrapper.scrollWidth - wrapper.clientWidth));
+            wrapper.scrollTop = Math.max(0, Math.min(afterZoomScrollTop, wrapper.scrollHeight - wrapper.clientHeight));
         }
     }
     
+    // Палитра
     function buildPalette() {
         paletteDiv.innerHTML = '';
         COLORS.forEach(c => {
@@ -447,19 +619,32 @@
     canvas.style.transform = `scale(${zoom})`;
     canvas.style.transformOrigin = '0 0';
     
-    canvas.addEventListener('mousedown', onStart);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onEnd);
-    canvas.addEventListener('touchstart', onStart, {passive: false});
-    window.addEventListener('touchmove', onMove, {passive: false});
-    window.addEventListener('touchend', onEnd);
+    // Мышь
+    canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
     
-    canvas.addEventListener('mousedown', onRightStart);
-    window.addEventListener('mousemove', onRightMove);
-    window.addEventListener('mouseup', onRightEnd);
-    canvas.addEventListener('wheel', onWheel, {passive: false});
+    // Правая кнопка для перемещения
+    canvas.addEventListener('mousedown', onPanStart);
+    window.addEventListener('mousemove', onPanMove);
+    window.addEventListener('mouseup', onPanEnd);
+    
+    // Тач для рисования (1 палец)
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd);
+    
+    // Тач для зума (2 пальца)
+    canvas.addEventListener('touchstart', onTouchPinchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchPinchMove, { passive: false });
+    
+    // Колесико
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    wrapper.addEventListener('wheel', onWheel, { passive: false });
+    
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     
+    // Админ кнопки
     if (isAdmin) {
         document.getElementById('clearBtn').onclick = clearCanvas;
         document.getElementById('fillAllBtn').onclick = () => fillAll(document.getElementById('adminColor').value);
